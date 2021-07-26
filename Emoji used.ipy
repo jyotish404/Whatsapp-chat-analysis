@@ -1,0 +1,101 @@
+import re
+import datetime
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+from wordcloud import WordCloud
+import emoji
+import itertools 
+from collections import Counter
+import warnings
+
+%matplotlib inline
+warnings.filterwarnings('ignore')
+
+def rawToDf(file, key):
+    
+    split_formats = {
+        '12hr' : '\d{1,2}/\d{1,2}/\d{2,4},\s\d{1,2}:\d{2}\s[APap][mM]\s-\s',
+        '24hr' : '\d{1,2}/\d{1,2}/\d{2,4},\s\d{1,2}:\d{2}\s-\s',
+        'custom' : ''
+    }
+    datetime_formats = {
+        '12hr' : '%d/%m/%Y, %I:%M %p - ',
+        '24hr' : '%d/%m/%Y, %H:%M - ',
+        'custom': ''
+    }
+    
+    with open(file, 'r', encoding='utf-8') as raw_data:
+       
+        raw_string = ' '.join(raw_data.read().split('\n'))
+        user_msg = re.split(split_formats[key], raw_string) [1:] 
+        date_time = re.findall(split_formats[key], raw_string) 
+        
+    df = pd.DataFrame({'date_time': date_time, 'user_msg': user_msg}) 
+        
+    df['date_time'] = pd.to_datetime(df['date_time'], format=datetime_formats[key])
+    
+    usernames = []
+    msgs = []
+    for i in df['user_msg']:
+        a = re.split('([\w\W]+?):\s', i) 
+        if(a[1:]): 
+            usernames.append(a[1])
+            msgs.append(a[2])
+        else: 
+            usernames.append("group_notification")
+            msgs.append(a[0])
+
+    # new columns         
+    df['user'] = usernames
+    df['message'] = msgs
+
+    df.drop('user_msg', axis=1, inplace=True)
+    
+    return df
+
+df = rawToDf('WhatsApp Chat.txt', '12hr')
+
+df.info()
+
+df.sample(10)
+
+emoji_ctr = Counter()
+emojis_list = map(lambda x: ''.join(x.split()), emoji.UNICODE_EMOJI.keys())
+r = re.compile('|'.join(re.escape(p) for p in emojis_list))
+for idx, row in df.iterrows():
+    emojis_found = r.findall(row["message"])
+    for emoji_found in emojis_found:
+        emoji_ctr[emoji_found] += 1
+        
+top10emojis = pd.DataFrame() 
+top10emojis['emoji'] = [''] * 10
+top10emojis['emoji_count'] = [0] * 10
+top10emojis['emoji_description'] = [''] * 10
+
+i = 0
+for item in emoji_ctr.most_common(10):
+    
+    description = emoji.demojize(item[0])[1:-1]   
+    
+    top10emojis.emoji[i] = item[0]
+    top10emojis.emoji_count[i] = int(item[1])
+    top10emojis.emoji_description[i] = description
+    i += 1
+
+top10emojis
+
+plt.figure(figsize=(15, 6))
+
+import matplotlib
+matplotlib.rcParams['font.size'] = 15
+sns.set_style("darkgrid")
+sns.barplot(top10emojis.emoji_count, top10emojis.emoji_description, palette = "Paired_r")
+
+plt.title('Most Used Emoji')
+plt.xlabel('Emoji Count')
+plt.ylabel('Emoji Used');
+
+plt.savefig('top10emoji.svg', format = 'svg')
+
