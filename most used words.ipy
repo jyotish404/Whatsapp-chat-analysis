@@ -1,0 +1,97 @@
+# -*- coding: utf-8 -*-
+import re
+import datetime
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+from wordcloud import WordCloud
+import emoji
+import itertools 
+from collections import Counter
+import warnings
+
+%matplotlib inline
+warnings.filterwarnings('ignore')
+
+def rawToDf(file, key):
+    
+    split_formats = {
+        '12hr' : '\d{1,2}/\d{1,2}/\d{2,4},\s\d{1,2}:\d{2}\s[APap][mM]\s-\s',
+        '24hr' : '\d{1,2}/\d{1,2}/\d{2,4},\s\d{1,2}:\d{2}\s-\s',
+        'custom' : ''
+    }
+    datetime_formats = {
+        '12hr' : '%d/%m/%Y, %I:%M %p - ',
+        '24hr' : '%d/%m/%Y, %H:%M - ',
+        'custom': ''
+    }
+    
+    with open(file, 'r', encoding='utf-8') as raw_data:
+       
+        raw_string = ' '.join(raw_data.read().split('\n'))
+        user_msg = re.split(split_formats[key], raw_string) [1:] 
+        date_time = re.findall(split_formats[key], raw_string) 
+        
+    df = pd.DataFrame({'date_time': date_time, 'user_msg': user_msg}) 
+        
+    df['date_time'] = pd.to_datetime(df['date_time'], format=datetime_formats[key])
+    
+    usernames = []
+    msgs = []
+    for i in df['user_msg']:
+        a = re.split('([\w\W]+?):\s', i) 
+        if(a[1:]): 
+            usernames.append(a[1])
+            msgs.append(a[2])
+        else: 
+            usernames.append("group_notification")
+            msgs.append(a[0])
+
+    # new columns         
+    df['user'] = usernames
+    df['message'] = msgs
+
+    df.drop('user_msg', axis=1, inplace=True)
+    
+    return df
+
+df = rawToDf('WhatsApp Chat1.txt', '12hr')
+
+df.info()
+
+df.sample(10)
+df[df['message'] == ""].shape[0]
+
+df['day'] = df['date_time'].dt.strftime('%a')
+df['month'] = df['date_time'].dt.strftime('%b')
+df['year'] = df['date_time'].dt.year
+df['date'] = df['date_time'].apply(lambda x: x.date())
+df
+
+df3 = df.copy()
+df3['message_count'] = [1] * df.shape[0]    
+
+df3['hour'] = df3['date_time'].apply(lambda x: x.hour)
+
+grouped_by_time = df3.groupby('hour').sum().reset_index().sort_values(by = 'hour')
+
+comment_words = ' '
+
+for val in df3.message.values:
+    
+    val = str(val) 
+    tokens = val.split() 
+    
+    for i in range(len(tokens)): 
+        tokens[i] = tokens[i].lower() 
+          
+    for words in tokens: 
+        comment_words = comment_words + words + ' '
+  
+wordcloud = WordCloud(width = 600, height = 600, 
+                background_color ='white', 
+                min_font_size = 8).generate(comment_words) 
+
+wordcloud.to_image()
+
